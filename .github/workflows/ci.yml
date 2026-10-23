@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  dbt-build:
+    name: dbt build on synthetic sample
+    runs-on: ubuntu-latest
+    env:
+      DBT_PROFILES_DIR: .
+      OLIST_DUCKDB_PATH: data/ci.duckdb
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile Python
+        run: python -m py_compile scripts/*.py dashboard/app.py
+
+      - name: Configure dbt profile
+        run: cp profiles.yml.example profiles.yml
+
+      # CI never touches the real Olist data: it builds against a few hundred
+      # rows of clearly labelled synthetic data generated on the fly.
+      - name: Generate synthetic sample
+        run: python scripts/make_sample_data.py --out data/sample_synthetic
+
+      - name: Load sample into DuckDB
+        run: python scripts/load_raw.py --data-dir data/sample_synthetic --db data/ci.duckdb
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: dbt build (models + tests)
+        run: dbt build
+
+      - name: dbt docs generate
+        run: dbt docs generate
+
+      # Lint is advisory: style findings are reported but do not fail the build.
+      - name: sqlfluff lint
+        continue-on-error: true
+        run: sqlfluff lint models tests --format github-annotation-native
