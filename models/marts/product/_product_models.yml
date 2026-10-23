@@ -1,0 +1,132 @@
+version: 2
+
+models:
+  - name: mart_product_performance_weekly
+    description: >
+      One row per product category and complete week in the analysis window, dense
+      (weeks with no sales show 0). Valid orders only. The main table for weekly
+      category reporting.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [product_category, week_start]
+    columns:
+      - name: category_week_key
+        description: Surrogate key, product_category plus week_start.
+        data_tests: [unique, not_null]
+      - name: product_category
+        description: Category label (English, else Portuguese, else unknown).
+        data_tests: [not_null]
+      - name: week_start
+        description: '{{ doc("week_start") }}'
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('int_week_spine')
+              field: week_start
+      - name: iso_year
+        description: ISO year of the week.
+      - name: iso_week
+        description: ISO week number.
+      - name: units_sold
+        description: Units sold in the category that week.
+        data_tests: [not_null, non_negative]
+      - name: n_orders
+        description: Distinct valid orders with at least one item in the category.
+        data_tests: [not_null, non_negative]
+      - name: item_revenue
+        description: '{{ doc("item_revenue") }}'
+        data_tests: [not_null, non_negative]
+      - name: freight_revenue
+        description: Freight charged on the category's items, BRL.
+      - name: n_products_sold
+        description: Distinct products with at least one unit sold.
+      - name: avg_unit_price
+        description: item_revenue divided by units_sold. Null in weeks with no sales.
+      - name: n_reviewed_units
+        description: Units whose order has a review.
+      - name: avg_review_score
+        description: Unit-weighted average order review score, by purchase week. Null when no reviewed units.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: units_sold_trailing_4wk_avg
+        description: Average units over this week and the three before it.
+
+  - name: mart_demand_adjusted_weekly
+    description: >
+      View on mart_product_performance_weekly that adds a seasonality adjustment and
+      the availability-gap proxy, per category and week. Read seasonally adjusted
+      units for trend; read the gap columns as a prompt to investigate, not as a
+      measured stock-out.
+    columns:
+      - name: category_week_key
+        description: Surrogate key, product_category plus week_start.
+        data_tests: [unique, not_null]
+      - name: product_category
+        description: Category label.
+      - name: week_start
+        description: '{{ doc("week_start") }}'
+      - name: iso_year
+        description: ISO year.
+      - name: iso_week
+        description: ISO week number, the join key to the seasonality index.
+      - name: units_sold
+        description: Units sold (unadjusted).
+      - name: item_revenue
+        description: Item revenue (unadjusted), BRL.
+      - name: avg_unit_price
+        description: item_revenue divided by units_sold.
+      - name: avg_review_score
+        description: Unit-weighted average review score.
+      - name: seasonality_index
+        description: '{{ doc("seasonality_index") }} Defaults to 1.0 for an ISO week with no estimate.'
+        data_tests: [not_null]
+      - name: seasonally_adjusted_units
+        description: units_sold divided by seasonality_index.
+      - name: seasonally_adjusted_revenue
+        description: item_revenue divided by seasonality_index.
+      - name: n_regular_products_tracked
+        description: Regular-selling products of the category inside their selling span this week.
+      - name: n_products_in_gap
+        description: Of those, how many are in a flagged availability gap this week (PROXY).
+      - name: share_regular_products_in_gap
+        description: n_products_in_gap divided by n_regular_products_tracked.
+      - name: expected_units_in_gap_proxy
+        description: Sum of usual weekly units of the products in a gap. A rough size of demand that may have gone unserved; it is a proxy, not lost sales.
+      - name: has_availability_gap_flag
+        description: True when at least one regular product in the category is in a flagged gap.
+
+  - name: mart_product_availability_gaps
+    description: >
+      One row per flagged availability gap (product and gap start week). Drill-down
+      for mart_demand_adjusted_weekly. {{ doc("availability_gap_proxy") }}
+    columns:
+      - name: gap_key
+        description: Surrogate key, product_id plus gap_start_week.
+        data_tests: [unique, not_null]
+      - name: product_id
+        description: Product.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_products')
+              field: product_id
+      - name: product_category
+        description: Category label.
+      - name: gap_start_week
+        description: First zero-sale week of the gap.
+        data_tests: [not_null]
+      - name: gap_end_week
+        description: Last zero-sale week of the gap.
+      - name: gap_weeks
+        description: Length of the gap in weeks.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: "{{ var('gap_min_run_weeks') }}"
+      - name: weekly_sell_probability
+        description: Share of span weeks in which the product sold (p).
+      - name: prob_zero_run_by_chance
+        description: (1 - p) ^ gap_weeks. Below gap_probability_threshold by construction.
+      - name: expected_units_in_gap_proxy
+        description: Usual weekly units times gap_weeks. A rough, proxy-based size of unserved demand.
