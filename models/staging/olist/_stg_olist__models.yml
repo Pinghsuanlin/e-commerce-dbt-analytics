@@ -1,0 +1,209 @@
+version: 2
+
+models:
+  - name: stg_olist__orders
+    description: One row per order. Typed timestamps, lower-cased status, deduplicated on order_id.
+    columns:
+      - name: order_id
+        description: Order identifier. Primary key.
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: Per-order customer identifier. Join to stg_olist__customers for the person (customer_unique_id).
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__customers')
+              field: customer_id
+      - name: order_status
+        description: Lifecycle status of the order.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['delivered', 'shipped', 'canceled', 'unavailable', 'invoiced', 'processing', 'created', 'approved']
+      - name: purchased_at
+        description: When the customer placed the order. Drives every weekly and cohort metric.
+        data_tests: [not_null]
+      - name: approved_at
+        description: When payment was approved. Null if never approved.
+      - name: delivered_to_carrier_at
+        description: When the seller handed the order to the logistics partner.
+      - name: delivered_to_customer_at
+        description: When the customer received the order. Null if not delivered.
+      - name: estimated_delivery_at
+        description: Delivery date promised to the customer at purchase.
+
+  - name: stg_olist__order_items
+    description: One row per item line. Quantity is expressed by repeating the line, so one row is one unit.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [order_id, order_item_id]
+    columns:
+      - name: order_id
+        description: Order the item belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__orders')
+              field: order_id
+      - name: order_item_id
+        description: Sequence number of the item within the order, starting at 1.
+        data_tests: [not_null]
+      - name: product_id
+        description: Product sold.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__products')
+              field: product_id
+      - name: seller_id
+        description: Seller who fulfilled the item.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__sellers')
+              field: seller_id
+      - name: shipping_limit_at
+        description: Deadline for the seller to hand the item to the carrier.
+      - name: item_price
+        description: Price of the item in BRL, excluding freight.
+        data_tests: [not_null, non_negative]
+      - name: freight_value
+        description: Freight charged for the item in BRL. Split across items when an order has several.
+        data_tests: [not_null, non_negative]
+
+  - name: stg_olist__products
+    description: One row per product. Fixes the source "lenght" typo in column names.
+    columns:
+      - name: product_id
+        description: Product identifier. Primary key.
+        data_tests: [unique, not_null]
+      - name: product_category_name_pt
+        description: Category name in Portuguese, lower case. Null for a small share of products.
+      - name: product_name_length
+        description: Number of characters in the product name.
+      - name: product_description_length
+        description: Number of characters in the product description.
+      - name: product_photos_qty
+        description: Number of product photos published.
+      - name: product_weight_g
+        description: Weight in grams.
+      - name: product_length_cm
+        description: Length in centimetres.
+      - name: product_height_cm
+        description: Height in centimetres.
+      - name: product_width_cm
+        description: Width in centimetres.
+
+  - name: stg_olist__category_translation
+    description: One row per Portuguese category name with its English translation.
+    columns:
+      - name: product_category_name_pt
+        description: Category name in Portuguese, lower case. Primary key.
+        data_tests: [unique, not_null]
+      - name: product_category_name_en
+        description: Category name in English, lower case.
+
+  - name: stg_olist__customers
+    description: One row per customer_id. Olist creates a new customer_id for every order; customer_unique_id is the person.
+    columns:
+      - name: customer_id
+        description: Per-order customer identifier. Primary key.
+        data_tests: [unique, not_null]
+      - name: customer_unique_id
+        description: Identifier of the person across orders. Use this for retention and customer counts.
+        data_tests: [not_null]
+      - name: customer_zip_code_prefix
+        description: First five digits of the customer zip code, left-padded with zeros.
+      - name: customer_city
+        description: Customer city, lower case.
+      - name: customer_state
+        description: Customer state (two-letter code).
+
+  - name: stg_olist__sellers
+    description: One row per seller.
+    columns:
+      - name: seller_id
+        description: Seller identifier. Primary key.
+        data_tests: [unique, not_null]
+      - name: seller_zip_code_prefix
+        description: First five digits of the seller zip code, left-padded with zeros.
+      - name: seller_city
+        description: Seller city, lower case.
+      - name: seller_state
+        description: Seller state (two-letter code).
+
+  - name: stg_olist__order_payments
+    description: One row per payment record. An order paid with two methods has two rows.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [order_id, payment_sequential]
+    columns:
+      - name: order_id
+        description: Order the payment belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__orders')
+              field: order_id
+      - name: payment_sequential
+        description: Sequence number of the payment within the order.
+        data_tests: [not_null]
+      - name: payment_type
+        description: Payment method.
+        data_tests:
+          - accepted_values:
+              values: ['credit_card', 'boleto', 'voucher', 'debit_card', 'not_defined']
+      - name: payment_installments
+        description: Number of instalments chosen.
+      - name: payment_value
+        description: Amount paid in this record, BRL.
+        data_tests: [not_null, non_negative]
+
+  - name: stg_olist__order_reviews
+    description: One row per (review_id, order_id). Exact duplicate rows in the source are removed; the latest answered copy is kept.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [review_id, order_id]
+    columns:
+      - name: review_id
+        description: Review identifier. Not unique on its own in the source.
+        data_tests: [not_null]
+      - name: order_id
+        description: Order reviewed.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('stg_olist__orders')
+              field: order_id
+      - name: review_score
+        description: Score from 1 to 5 given by the customer.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+              quote: false
+      - name: review_comment_title
+        description: Optional review title (Portuguese free text).
+      - name: review_comment_message
+        description: Optional review message (Portuguese free text).
+      - name: review_created_at
+        description: When the satisfaction survey was sent to the customer.
+      - name: review_answered_at
+        description: When the customer answered the survey.
+
+  - name: stg_olist__geolocation
+    description: One row per zip code prefix, collapsed from many raw rows to the median coordinate and most common city and state.
+    columns:
+      - name: zip_code_prefix
+        description: First five digits of the zip code, left-padded with zeros. Primary key.
+        data_tests: [unique, not_null]
+      - name: latitude
+        description: Median latitude of raw rows for the prefix.
+      - name: longitude
+        description: Median longitude of raw rows for the prefix.
+      - name: city
+        description: Most common city spelling for the prefix, lower case.
+      - name: state
+        description: Most common state for the prefix.
+      - name: n_source_rows
+        description: Number of raw geolocation rows collapsed into this row.
