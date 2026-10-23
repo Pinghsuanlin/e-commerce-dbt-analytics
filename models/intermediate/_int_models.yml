@@ -1,0 +1,222 @@
+version: 2
+
+models:
+  - name: int_order_reviews
+    description: One row per reviewed order. When an order has several reviews, the latest answered one is kept.
+    columns:
+      - name: order_id
+        description: Order reviewed. Primary key.
+        data_tests: [unique, not_null]
+      - name: review_id
+        description: Review chosen for the order.
+        data_tests: [not_null]
+      - name: review_score
+        description: Score from 1 to 5.
+        data_tests: [not_null]
+      - name: review_created_at
+        description: When the survey was sent.
+      - name: review_answered_at
+        description: When the customer answered.
+      - name: has_comment
+        description: True if the chosen review has a written message.
+      - name: n_reviews_for_order
+        description: Number of distinct reviews the order has in staging (1 for most orders).
+
+  - name: int_order_items_enriched
+    description: >
+      One row per order item (one unit sold), joined to its order, customer, product
+      category, seller and order-level review. Includes all order statuses; filter on
+      is_valid_order for sales metrics.
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          compare_model: ref('stg_olist__order_items')
+    columns:
+      - name: order_item_key
+        description: Surrogate key, order_id plus order_item_id. Primary key.
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: Order the item belongs to.
+        data_tests: [not_null]
+      - name: order_item_id
+        description: Sequence number of the item within the order.
+      - name: product_id
+        description: Product sold.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_products')
+              field: product_id
+      - name: seller_id
+        description: Seller who fulfilled the item.
+      - name: customer_id
+        description: Per-order customer identifier.
+      - name: customer_unique_id
+        description: The person who placed the order.
+      - name: order_status
+        description: Status of the parent order.
+      - name: is_valid_order
+        description: '{{ doc("valid_order") }}'
+        data_tests: [not_null]
+      - name: purchased_at
+        description: When the parent order was placed.
+      - name: purchase_date
+        description: Calendar date of purchased_at.
+      - name: purchase_week_start
+        description: '{{ doc("week_start") }}'
+      - name: product_category
+        description: Category label (English, else Portuguese, else unknown).
+        data_tests: [not_null]
+      - name: product_category_name_pt
+        description: Category name in Portuguese as published by Olist.
+      - name: customer_state
+        description: Customer state at the time of the order.
+      - name: seller_state
+        description: Seller state.
+      - name: is_same_state_shipment
+        description: True when seller and customer are in the same state.
+      - name: shipping_limit_at
+        description: Seller hand-off deadline.
+      - name: item_price
+        description: Item price in BRL, excluding freight.
+      - name: freight_value
+        description: Freight in BRL.
+      - name: item_gross_value
+        description: item_price plus freight_value.
+      - name: order_review_score
+        description: Review score of the parent order (order-level, applied to every item in the order).
+
+  - name: int_product_weekly_sales
+    description: >
+      One row per product and purchase week with at least one unit sold (sparse).
+      Valid orders only, all weeks (not restricted to the analysis window).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [product_id, week_start]
+    columns:
+      - name: product_id
+        description: Product sold.
+        data_tests: [not_null]
+      - name: week_start
+        description: '{{ doc("week_start") }}'
+        data_tests: [not_null]
+      - name: product_category
+        description: Category label of the product.
+      - name: units_sold
+        description: Units sold in the week.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: n_orders
+        description: Distinct valid orders containing the product in the week.
+      - name: item_revenue
+        description: '{{ doc("item_revenue") }}'
+      - name: freight_revenue
+        description: Freight charged on the product's items in the week, BRL.
+      - name: avg_unit_price
+        description: item_revenue divided by units_sold.
+      - name: n_reviewed_units
+        description: Units whose parent order has a review score.
+      - name: review_score_sum
+        description: Sum of order review scores over reviewed units. Divide by n_reviewed_units for a weighted average.
+
+  - name: int_week_spine
+    description: >
+      One row per complete ISO week inside the analysis window (vars analysis_start_date
+      and analysis_end_date) and inside the data range. Partial weeks at the edges are dropped.
+    columns:
+      - name: week_start
+        description: Monday of the week. Primary key.
+        data_tests: [unique, not_null]
+      - name: week_end
+        description: Sunday of the week.
+      - name: iso_year
+        description: ISO year of the week.
+      - name: iso_week
+        description: ISO week number, 1 to 53.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 53
+      - name: week_number
+        description: Sequential week number from 1 at the start of the window. Used as the time axis for the trend fit.
+
+  - name: int_product_sales_profile
+    description: One row per product with at least one sale inside the analysis window. Describes how regularly it sells.
+    columns:
+      - name: product_id
+        description: Product. Primary key.
+        data_tests: [unique, not_null]
+      - name: product_category
+        description: Category label.
+      - name: first_sale_week
+        description: First week with a sale inside the window.
+      - name: last_sale_week
+        description: Last week with a sale inside the window.
+      - name: active_weeks
+        description: Number of weeks with at least one sale.
+      - name: span_weeks
+        description: Weeks from first to last sale, inclusive.
+      - name: units_in_window
+        description: Units sold inside the window.
+      - name: weekly_sell_probability
+        description: active_weeks divided by span_weeks. The p used by the availability-gap proxy.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: avg_units_per_span_week
+        description: units_in_window divided by span_weeks.
+      - name: is_regular_seller
+        description: '{{ doc("regular_seller") }}'
+
+  - name: int_product_availability_gaps
+    description: >
+      One row per regular-selling product and week from its first to last sale, with
+      zero weeks filled in and scored. {{ doc("availability_gap_proxy") }}
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [product_id, week_start]
+    columns:
+      - name: product_week_key
+        description: Surrogate key, product_id plus week_start.
+        data_tests: [unique, not_null]
+      - name: product_id
+        description: Product.
+        data_tests: [not_null]
+      - name: product_category
+        description: Category label.
+      - name: week_start
+        description: '{{ doc("week_start") }}'
+      - name: units_sold
+        description: Units sold in the week, 0 when none.
+      - name: is_zero_week
+        description: True when no unit sold that week.
+      - name: zero_run_length
+        description: Length in weeks of the run of consecutive zero weeks this week belongs to. Null on selling weeks.
+      - name: zero_run_start_week
+        description: First week of that zero run.
+      - name: zero_run_end_week
+        description: Last week of that zero run.
+      - name: weekly_sell_probability
+        description: Share of span weeks in which the product sold (p).
+      - name: avg_units_per_span_week
+        description: Average units per week over the product's span.
+      - name: prob_zero_run_by_chance
+        description: (1 - p) ^ zero_run_length. Chance of a run this long if nothing changed. Null on selling weeks.
+      - name: is_likely_availability_gap
+        description: '{{ doc("availability_gap_proxy") }}'
+        data_tests: [not_null]
+
+  - name: int_seasonality_index
+    description: '{{ doc("seasonality_index") }}'
+    columns:
+      - name: iso_week
+        description: ISO week of year. Primary key.
+        data_tests: [unique, not_null]
+      - name: n_weeks_observed
+        description: How many calendar weeks in the window fell on this ISO week (1 or 2 for Olist).
+      - name: seasonality_index_raw
+        description: Unsmoothed ratio-to-trend, rescaled to average 1.0.
+      - name: seasonality_index
+        description: Smoothed index, rescaled to average 1.0. Used for adjustment.
+        data_tests: [not_null]
