@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: mart_customer_retention
+    description: >
+      One row per first-order cohort month. Repeat purchase rate at 30, 90 and 180
+      days (windows set by the retention_windows_days var). {{ doc("cohort_month") }}
+      {{ doc("repeat_purchase") }} Rates are null where the cohort has not yet had the
+      full window to repeat (right-censoring).
+    columns:
+      - name: cohort_month
+        description: '{{ doc("cohort_month") }}'
+        data_tests: [unique, not_null]
+      - name: cohort_size
+        description: Customers whose first valid order fell in the month.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: repeaters_30d
+        description: Cohort customers with a repeat purchase within 30 days of their first order.
+      - name: is_complete_30d
+        description: True when every customer in the cohort has had at least 30 days of data after their first order.
+      - name: repeat_rate_30d
+        description: repeaters_30d divided by cohort_size. Null when is_complete_30d is false.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: repeaters_90d
+        description: Cohort customers with a repeat purchase within 90 days.
+      - name: is_complete_90d
+        description: True when every customer in the cohort has had at least 90 days of data.
+      - name: repeat_rate_90d
+        description: repeaters_90d divided by cohort_size. Null when is_complete_90d is false.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: repeaters_180d
+        description: Cohort customers with a repeat purchase within 180 days.
+      - name: is_complete_180d
+        description: True when every customer in the cohort has had at least 180 days of data.
+      - name: repeat_rate_180d
+        description: repeaters_180d divided by cohort_size. Null when is_complete_180d is false.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: repeaters_ever
+        description: Cohort customers with any repeat purchase up to the end of the data.
+      - name: repeat_rate_to_date
+        description: repeaters_ever divided by cohort_size. Not comparable across cohorts (older cohorts have had longer).
+      - name: data_end_date
+        description: Last valid purchase date in the data, used for the completeness flags.
