@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: dq_summary
+    description: >
+      One row per data quality check, with how many rows fail it. Complements the
+      dbt tests: tests block the build on rules that must hold, this table sizes the
+      known quirks of the source so they can be monitored and explained.
+    columns:
+      - name: check_name
+        description: Short identifier of the check. Primary key.
+        data_tests: [unique, not_null]
+      - name: model_name
+        description: Model or source the check scans.
+      - name: severity
+        description: error (should never happen), warn (known quirk to watch) or info (expected property, sized for context).
+        data_tests:
+          - accepted_values:
+              values: ['error', 'warn', 'info']
+      - name: description
+        description: Plain-English meaning of a failing row.
+      - name: n_failing
+        description: Rows failing the check.
+        data_tests: [not_null]
+      - name: n_checked
+        description: Rows in scope for the check.
+      - name: pct_failing
+        description: n_failing divided by n_checked.
+      - name: checked_at
+        description: When the summary was built.
