@@ -1,0 +1,20 @@
+version: 2
+
+exposures:
+  - name: streamlit_dashboard
+    label: Olist weekly performance dashboard
+    type: dashboard
+    maturity: medium
+    url: http://localhost:8501
+    description: >
+      Local Streamlit app (dashboard/app.py): weekly category performance with
+      seasonality adjustment, availability-gap flags, retention cohort heatmap and
+      the data quality summary.
+    depends_on:
+      - ref('mart_product_performance_weekly')
+      - ref('mart_demand_adjusted_weekly')
+      - ref('mart_product_availability_gaps')
+      - ref('mart_customer_retention')
+      - ref('dq_summary')
+    owner:
+      name: Sherie Lin
