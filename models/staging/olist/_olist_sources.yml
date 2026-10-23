@@ -1,0 +1,42 @@
+version: 2
+
+# Raw Olist tables. scripts/load_raw.py copies each CSV into the `raw` schema of
+# the DuckDB file with every column as VARCHAR, so typing happens in exactly
+# one place (the staging models) and a malformed file fails loudly there.
+# No freshness checks: this is a static, historical dataset.
+
+sources:
+  - name: olist
+    description: >
+      Olist Brazilian E-Commerce public dataset (Kaggle olistbr/brazilian-ecommerce,
+      CC BY-NC-SA 4.0). About 100k orders placed 2016 to 2018. Loaded as untyped
+      VARCHAR tables by scripts/load_raw.py.
+    schema: raw
+    tables:
+      - name: orders
+        description: One row per order, with status and lifecycle timestamps. Source file olist_orders_dataset.csv.
+        columns:
+          - name: order_id
+            data_tests: [not_null]
+      - name: order_items
+        description: One row per item line within an order. Source file olist_order_items_dataset.csv.
+      - name: products
+        description: One row per product, with category and physical attributes. Source file olist_products_dataset.csv.
+      - name: product_category_name_translation
+        description: Portuguese to English category name lookup. Source file product_category_name_translation.csv.
+      - name: customers
+        description: >
+          One row per customer_id. Olist issues a new customer_id for every order;
+          customer_unique_id identifies the person. Source file olist_customers_dataset.csv.
+      - name: sellers
+        description: One row per seller. Source file olist_sellers_dataset.csv.
+      - name: order_payments
+        description: One row per payment record of an order (an order can be split across methods). Source file olist_order_payments_dataset.csv.
+      - name: order_reviews
+        description: >
+          Customer reviews. Not unique on review_id, and some orders have more than one
+          review. Source file olist_order_reviews_dataset.csv.
+      - name: geolocation
+        description: >
+          Zip-code-prefix to latitude/longitude lookup with many duplicate rows per prefix.
+          Source file olist_geolocation_dataset.csv.
