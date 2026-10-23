@@ -1,0 +1,191 @@
+version: 2
+
+models:
+  - name: fct_orders
+    description: >
+      One row per order, every status. Holds the single definition of order value
+      ({{ doc("gross_order_value") }}) next to the payment total so the two can be
+      reconciled. Filter on is_valid_order for revenue reporting.
+    columns:
+      - name: order_id
+        description: Order identifier. Primary key.
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: Per-order customer identifier.
+        data_tests: [not_null]
+      - name: customer_unique_id
+        description: The person who placed the order.
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_unique_id
+      - name: customer_state
+        description: Customer state at the time of the order.
+      - name: order_status
+        description: Lifecycle status of the order.
+      - name: is_valid_order
+        description: '{{ doc("valid_order") }}'
+        data_tests: [not_null]
+      - name: purchased_at
+        description: When the order was placed.
+        data_tests: [not_null]
+      - name: purchase_date
+        description: Calendar date of purchased_at.
+      - name: purchase_week_start
+        description: '{{ doc("week_start") }}'
+      - name: purchase_month
+        description: First day of the purchase month.
+      - name: approved_at
+        description: When payment was approved.
+      - name: delivered_to_carrier_at
+        description: When the seller handed the order to the carrier.
+      - name: delivered_to_customer_at
+        description: When the customer received the order.
+      - name: estimated_delivery_at
+        description: Delivery date promised at purchase.
+      - name: days_to_deliver
+        description: Days from purchase to delivery. Null if not delivered.
+      - name: is_delivered_late
+        description: True when delivered after the promised date. Null if not delivered.
+      - name: n_items
+        description: Item lines (units) in the order. 0 for orders with no items.
+        data_tests: [not_null, non_negative]
+      - name: n_products
+        description: Distinct products in the order.
+      - name: n_sellers
+        description: Distinct sellers fulfilling the order.
+      - name: item_revenue
+        description: '{{ doc("item_revenue") }}'
+        data_tests: [not_null, non_negative]
+      - name: freight_revenue
+        description: Sum of freight charged, BRL.
+        data_tests: [not_null, non_negative]
+      - name: gross_order_value
+        description: '{{ doc("gross_order_value") }}'
+        data_tests: [not_null, non_negative]
+      - name: payment_total
+        description: Sum of all payment records for the order, BRL. Null if the order has no payment record.
+      - name: n_payment_records
+        description: Number of payment records.
+      - name: n_payment_types
+        description: Number of distinct payment methods used.
+      - name: max_installments
+        description: Largest instalment count across the order's payments.
+      - name: primary_payment_type
+        description: Payment method that carried the largest amount.
+      - name: payment_minus_order_value
+        description: payment_total minus gross_order_value. Non-zero values are tracked in dq_summary.
+      - name: review_id
+        description: Review used for the order (latest answered).
+      - name: review_score
+        description: Review score from 1 to 5. Null if the order has no review.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: customer_valid_order_number
+        description: 1 for the customer's first valid order, 2 for the second, and so on. Null for invalid orders.
+
+  - name: dim_products
+    description: >
+      One row per product in the catalogue, with category, physical attributes,
+      lifetime sales and how regularly it sells inside the analysis window.
+    columns:
+      - name: product_id
+        description: Product identifier. Primary key.
+        data_tests: [unique, not_null]
+      - name: product_category
+        description: Category label (English, else Portuguese, else unknown).
+        data_tests: [not_null]
+      - name: product_category_name_pt
+        description: Category name in Portuguese.
+      - name: product_category_name_en
+        description: Category name in English. Null where Olist has no translation.
+      - name: has_category
+        description: True when the product has a category.
+      - name: has_english_category
+        description: True when the category has an English translation.
+      - name: product_name_length
+        description: Characters in the product name.
+      - name: product_description_length
+        description: Characters in the product description.
+      - name: product_photos_qty
+        description: Number of product photos.
+      - name: product_weight_g
+        description: Weight in grams.
+      - name: product_length_cm
+        description: Length in centimetres.
+      - name: product_height_cm
+        description: Height in centimetres.
+      - name: product_width_cm
+        description: Width in centimetres.
+      - name: product_volume_cm3
+        description: Length times height times width, cubic centimetres.
+      - name: lifetime_units_sold
+        description: Units sold across all valid orders.
+        data_tests: [not_null, non_negative]
+      - name: lifetime_orders
+        description: Distinct valid orders containing the product. Weekly counts add up exactly because an order belongs to one week.
+      - name: lifetime_item_revenue
+        description: Item revenue across all valid orders, BRL.
+      - name: lifetime_avg_unit_price
+        description: lifetime_item_revenue divided by lifetime_units_sold.
+      - name: avg_review_score
+        description: Average order review score over reviewed units of the product.
+      - name: first_sale_week_all_time
+        description: First week with a valid sale, any date.
+      - name: last_sale_week_all_time
+        description: Last week with a valid sale, any date.
+      - name: active_weeks_in_window
+        description: Weeks with a sale inside the analysis window.
+      - name: span_weeks_in_window
+        description: Weeks from first to last sale inside the window.
+      - name: weekly_sell_probability
+        description: Share of span weeks with a sale.
+      - name: is_regular_seller
+        description: '{{ doc("regular_seller") }}'
+        data_tests: [not_null]
+
+  - name: dim_customers
+    description: >
+      One row per person (customer_unique_id). Holds the single definition of first
+      order and repeat purchase used by mart_customer_retention.
+    columns:
+      - name: customer_unique_id
+        description: The person. Primary key.
+        data_tests: [unique, not_null]
+      - name: customer_zip_code_prefix
+        description: Zip prefix from the customer's most recent order.
+      - name: customer_city
+        description: City from the most recent order.
+      - name: customer_state
+        description: State from the most recent order.
+      - name: customer_latitude
+        description: Median latitude of the zip prefix. Null when the prefix is not in the geolocation table.
+      - name: customer_longitude
+        description: Median longitude of the zip prefix.
+      - name: n_orders_all_statuses
+        description: Orders placed, any status.
+      - name: n_valid_orders
+        description: Valid orders placed.
+      - name: first_order_date
+        description: Date of the first valid order. Null if the customer has none.
+      - name: last_order_date
+        description: Date of the latest valid order.
+      - name: cohort_month
+        description: '{{ doc("cohort_month") }}'
+      - name: second_order_date
+        description: Date of the first repeat purchase. {{ doc("repeat_purchase") }}
+      - name: days_to_repeat_purchase
+        description: Days from first order to second_order_date.
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: "{{ var('repeat_min_gap_days') }}"
+      - name: has_repeat_purchase
+        description: True when the customer has a repeat purchase.
+        data_tests: [not_null]
+      - name: lifetime_gross_order_value
+        description: Sum of gross_order_value over valid orders, BRL.
+      - name: avg_review_score
+        description: Average review score over valid orders with a review.
