@@ -1,0 +1,13 @@
+# Copy to profiles.yml in the project root (it is git-ignored):
+#   cp profiles.yml.example profiles.yml
+# The Makefile and CI set DBT_PROFILES_DIR=. so dbt finds it there.
+#
+# The DuckDB file is created by scripts/load_raw.py. Override the location with
+# the OLIST_DUCKDB_PATH environment variable (CI uses data/ci.duckdb).
+olist_dbt_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('OLIST_DUCKDB_PATH', 'data/olist.duckdb') }}"
+      threads: 4

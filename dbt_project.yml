@@ -1,0 +1,64 @@
+name: olist_dbt_analytics
+version: "1.0.0"
+config-version: 2
+require-dbt-version: [">=1.8.0", "<2.0.0"]
+
+profile: olist_dbt_analytics
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages", "logs"]
+
+# Business rules live here, once. Every model reads them through var() so a
+# definition change is a one-line edit with a reviewable diff.
+vars:
+  # Orders in these statuses never generate revenue and are excluded from all
+  # sales, retention and product metrics.
+  excluded_order_statuses: ["canceled", "unavailable"]
+
+  # Weekly marts only use complete Monday-to-Sunday weeks inside this window.
+  # Olist volume is very thin in late 2016 and drops sharply after August 2018.
+  analysis_start_date: "2017-01-01"
+  analysis_end_date: "2018-08-31"
+
+  # Tolerances (BRL) for reconciliation tests.
+  revenue_tolerance: 0.01
+  payment_tolerance: 1.00
+
+  # Availability-gap proxy. A product "sells regularly" when it has at least
+  # this many weeks with a sale inside the analysis window ...
+  regular_min_active_weeks: 8
+  # ... and sold in at least this share of the weeks between its first and
+  # last sale (0.25 = roughly one week in four or more often).
+  regular_min_sell_probability: 0.25
+  # A run of zero-sale weeks is flagged when it is at least this long (a quiet
+  # fortnight is common noise even for steady sellers) ...
+  gap_min_run_weeks: 3
+  # ... and the chance of seeing it by luck alone is below this threshold.
+  gap_probability_threshold: 0.05
+
+  # Retention. A repeat purchase is a valid order placed at least this many
+  # days after the first valid order (same-day split baskets do not count).
+  repeat_min_gap_days: 1
+  retention_windows_days: [30, 90, 180]
+
+models:
+  olist_dbt_analytics:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: table
+    marts:
+      +schema: marts
+      +materialized: table
+    data_quality:
+      +schema: data_quality
+      +materialized: table
+
+data_tests:
+  olist_dbt_analytics:
+    +store_failures: false

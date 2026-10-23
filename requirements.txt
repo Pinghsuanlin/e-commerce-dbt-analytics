@@ -1,0 +1,14 @@
+# dbt
+dbt-core>=1.8,<1.10
+dbt-duckdb>=1.8,<1.10
+duckdb>=1.0,<2.0
+
+# data generation, loading and dashboard
+pandas>=2.0
+numpy>=1.24
+streamlit>=1.35
+plotly>=5.20
+
+# SQL lint (dbt templater renders refs and macros before linting)
+sqlfluff>=3.0,<4.0
+sqlfluff-templater-dbt>=3.0,<4.0

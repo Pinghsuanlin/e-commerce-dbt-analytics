@@ -1,0 +1,28 @@
+# Data: the Olist dataset is CC BY-NC-SA 4.0 and is not redistributed here.
+data/raw/*
+!data/raw/.gitkeep
+data/sample_synthetic/
+*.duckdb
+*.duckdb.wal
+
+# dbt
+target/
+dbt_packages/
+logs/
+profiles.yml
+.user.yml
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local result dumps
+results_summary.txt
+readme_results.txt

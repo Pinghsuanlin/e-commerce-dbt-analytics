@@ -1,0 +1,28 @@
+[sqlfluff]
+dialect = duckdb
+templater = dbt
+max_line_length = 120
+# ST06 (column order in select) fights readable grouping of keys, dates, measures.
+exclude_rules = ST06
+
+[sqlfluff:templater:dbt]
+project_dir = .
+profiles_dir = .
+profile = olist_dbt_analytics
+target = dev
+
+[sqlfluff:indentation]
+indent_unit = space
+tab_space_size = 4
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:aliasing.table]
+aliasing = explicit
+
+[sqlfluff:rules:aliasing.column]
+aliasing = explicit
